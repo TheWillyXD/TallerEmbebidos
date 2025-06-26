@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <avr/interrupt.h>
+
 // Pines LCD
 #define LCD_RS PC5
 #define LCD_E  PC4
@@ -215,11 +217,8 @@ void runStateMachine() {
             case UNIT_INCHES: lcdPrint("Unidad: Pulg"); break;
         }
 
-        static uint8_t counter = 0;
-        if (++counter >= 10) {
-            PORTB ^= (1 << LED_PIN);
-            counter = 0;
-        }
+    
+        
         unitChanged = false; // No interesa aquí
     }
     else if (currentState == STATE_FROZEN) {
@@ -243,12 +242,33 @@ void runStateMachine() {
     }
 }
 
+void setupTimer1() {
+    // CTC mode: Clear Timer on Compare Match
+    TCCR1B |= (1 << WGM12);
+
+    // Prescaler 64 → 16MHz / 64 = 250kHz → 25000 ticks = 100ms
+    TCCR1B |= (1 << CS11) | (1 << CS10);  // Prescaler 64
+    OCR1A = 10000;  // 40ms     (25000-10ms)
+
+    // Habilita interrupción por comparación
+    TIMSK1 |= (1 << OCIE1A);
+}
+
+
+ISR(TIMER1_COMPA_vect) {
+    if (currentState == STATE_MEASURING) {
+        PORTB ^= (1 << LED_PIN);  // Parpadea solo en modo medición
+    }
+}
+
 int main() {
     initPorts();
     lcdInit();
-
+    setupTimer1();
+    sei();  // Habilita interrupciones globales
     while (1) {
         checkButtons();
         runStateMachine();
     }
 }
+
